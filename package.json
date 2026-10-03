@@ -1,0 +1,21 @@
+{
+  "name": "tracedeck",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Open-source visual debugging and developer evidence platform",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "start": "node apps/server/server.mjs",
+    "dev": "TRACEDECK_DEV=1 node --watch apps/server/server.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "test:flow": "node scripts/verify-flow.mjs",
+    "seed": "node scripts/seed.mjs",
+    "pack:extension": "node scripts/pack-extension.mjs",
+    "check": "npm test && npm run smoke && npm run test:flow"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

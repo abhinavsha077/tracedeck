@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TraceDeck — Debugging evidence</title>
+  <link rel="stylesheet" href="/app/styles.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><div class="brandmark">T</div><div><strong>TraceDeck</strong><span>Open-source debugging</span></div></div>
+      <nav>
+        <button class="nav active" data-view="captures"><span>◫</span> Captures <b id="capture-count">0</b></button>
+        <button class="nav" data-view="links"><span>↗</span> Recording links</button>
+        <button class="nav" data-view="webhooks"><span>⌁</span> Webhooks</button>
+        <button class="nav" data-view="settings"><span>⚙</span> Project settings</button>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="health-dot"><i></i><span id="health">Checking server…</span></div>
+        <a href="https://github.com" target="_blank" rel="noreferrer">AGPL-3.0 · Self-hosted</a>
+      </div>
+    </aside>
+
+    <section class="workspace">
+      <header class="topbar">
+        <div class="search-wrap"><span>⌕</span><input id="search" placeholder="Search captures, URLs, metadata…" /></div>
+        <input id="import-file" type="file" accept=".zip,.trace.zip,application/zip" hidden />
+        <button class="button ghost" id="import-trace">Import .trace</button>
+        <button class="button ghost" id="refresh">Refresh</button>
+        <button class="button primary" id="new-record-link">+ Recording link</button>
+      </header>
+
+      <div id="captures-view" class="view active">
+        <div class="split">
+          <aside class="capture-list-pane">
+            <div class="pane-title"><div><h2>Captures</h2><p>Visual reports with synchronized technical context.</p></div></div>
+            <div id="capture-list" class="capture-list"></div>
+          </aside>
+          <main id="detail" class="detail"><div class="empty-state"><div class="empty-icon">◎</div><h2>Select a capture</h2><p>Choose a report on the left, record one with the browser extension, or create a recording link for someone else.</p></div></main>
+        </div>
+      </div>
+
+      <div id="links-view" class="view page-view">
+        <div class="page-head"><div><span class="eyebrow">CUSTOMER CAPTURE</span><h1>Recording links</h1><p>Share a URL that lets anyone record a screen issue without installing the extension.</p></div><button class="button primary" id="new-record-link-2">+ New link</button></div>
+        <div id="links-list" class="cards-grid"></div>
+      </div>
+
+      <div id="webhooks-view" class="view page-view">
+        <div class="page-head"><div><span class="eyebrow">AUTOMATION</span><h1>Webhooks</h1><p>Trigger CI, n8n, agents, or internal workflows when a capture changes.</p></div><button class="button primary" id="new-webhook">+ Webhook</button></div>
+        <div id="webhook-list" class="cards-grid"></div>
+      </div>
+
+      <div id="settings-view" class="view page-view">
+        <div class="page-head"><div><span class="eyebrow">PROJECT</span><h1>Settings & connection details</h1><p>Use the project key in the TraceDeck extension, SDK, CLI, and API clients.</p></div></div>
+        <div id="settings-content" class="settings-grid"></div>
+      </div>
+    </section>
+  </div>
+
+  <dialog id="modal"><form method="dialog" id="modal-form"><div class="modal-head"><h3 id="modal-title">Action</h3><button value="cancel" class="icon-button">×</button></div><div id="modal-body"></div><div class="modal-actions"><button value="cancel" class="button ghost">Cancel</button><button id="modal-confirm" value="default" class="button primary">Continue</button></div></form></dialog>
+  <div id="toast" class="toast"></div>
+  <script type="module" src="/app/app.js"></script>
+</body>
+</html>

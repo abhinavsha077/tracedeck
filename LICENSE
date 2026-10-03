@@ -1,0 +1,5 @@
+TraceDeck server, web application, extension, CLI and MCP implementation are licensed under the GNU Affero General Public License v3.0 or later.
+
+The browser SDK and CaptureBundle schema directories are additionally made available under the Apache License 2.0 for embedding in applications.
+
+SPDX identifiers are included in source headers where useful. See https://www.gnu.org/licenses/agpl-3.0.html and https://www.apache.org/licenses/LICENSE-2.0 for the full license texts.
