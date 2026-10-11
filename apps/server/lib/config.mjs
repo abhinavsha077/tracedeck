@@ -16,6 +16,9 @@ export const config = {
     apiKey: process.env.TRACEDECK_AI_API_KEY || '',
     model: process.env.TRACEDECK_AI_MODEL || ''
   },
+  telemetry: {
+    traceViewerUrl: process.env.TRACEDECK_TRACE_VIEWER_URL || ''
+  },
   integrations: {
     githubToken: process.env.TRACEDECK_GITHUB_TOKEN || '',
     githubRepo: process.env.TRACEDECK_GITHUB_REPO || '',

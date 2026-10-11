@@ -10,6 +10,8 @@ import { createExternalIssue } from './lib/integrations.mjs';
 import { generatePlaywright } from './lib/playwright.mjs';
 import { makeZip, readStoredZip, validateZip } from './lib/zip.mjs';
 import { validateCaptureBundle } from '../../packages/capture-schema/validate.mjs';
+import { triageCapture, captureToHar } from './lib/triage.mjs';
+import { runReproduction } from './lib/reproduction.mjs';
 import { contentTypeFor, hmac, json, readBody, readJson, text } from './lib/utils.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -124,6 +126,7 @@ async function handleApi(req, res, url) {
       publicUrl: config.publicUrl,
       projects: store.listProjects().map(({ key, ...project }) => project),
       features: { ai: Boolean(config.ai.baseUrl && config.ai.apiKey && config.ai.model), localAiFallback: true, recordingLinks: true, webhooks: true, integrations: ['github', 'linear', 'jira', 'slack'], mcp: true, cli: true },
+      telemetry: config.telemetry,
       integrationStatus: {
         github: Boolean(config.integrations.githubToken && config.integrations.githubRepo),
         linear: Boolean(config.integrations.linearToken),
@@ -283,11 +286,36 @@ async function handleApi(req, res, url) {
     return json(res, 200, { analysis });
   }
 
+  m = routeMatch(pathname, '/api/captures/:id/triage');
+  if (m && req.method === 'GET') {
+    const capture = store.getCapture(m.id);
+    if (!capture) return json(res, 404, { error: 'Capture not found' });
+    return json(res, 200, { triage: triageCapture(capture) });
+  }
+
+  m = routeMatch(pathname, '/api/captures/:id/har');
+  if (m && req.method === 'GET') {
+    const capture = store.getCapture(m.id);
+    if (!capture) return json(res, 404, { error: 'Capture not found' });
+    return json(res, 200, captureToHar(capture), { 'content-disposition': `attachment; filename="${m.id}.har"` });
+  }
+
   m = routeMatch(pathname, '/api/captures/:id/playwright');
   if (m && req.method === 'GET') {
     const capture = store.getCapture(m.id);
     if (!capture) return json(res, 404, { error: 'Capture not found' });
     return text(res, 200, generatePlaywright(capture), 'text/plain; charset=utf-8', { 'content-disposition': `attachment; filename="${m.id}.spec.ts"` });
+  }
+
+  m = routeMatch(pathname, '/api/captures/:id/reproduce');
+  if (m && (req.method === 'POST' || req.method === 'GET')) {
+    const capture = store.getCapture(m.id);
+    if (!capture) return json(res, 404, { error: 'Capture not found' });
+    const body = req.method === 'POST'
+      ? await readJson(req).catch(() => ({}))
+      : { checkEndpoints: url.searchParams.get('checkEndpoints') !== 'false' };
+    const report = await runReproduction(capture, body);
+    return json(res, 200, { reproduction: report });
   }
 
   m = routeMatch(pathname, '/api/captures/:id/export');

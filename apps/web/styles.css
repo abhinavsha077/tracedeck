@@ -50,3 +50,24 @@
 .log-viewer{width:100%;height:380px;display:flex;flex-direction:column;background:#050c12}
 .log-head{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);font-size:11px}
 .artifact-iframe{flex:1;border:0;width:100%;background:#02060a;color:#c0d6ea}
+
+/* OTel Distributed Traces & DOM Mutation Telemetry */
+.otel-trace-item{border-left:3px solid #a855f7 !important;background:#130b1c !important}
+.otel-trace-item label{color:#c084fc !important}
+.otel-badge{display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;background:#2e1065;color:#e9d5ff;border:1px solid #7e22ce;margin-left:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.dom-badge{background:#1e1b4b;color:#c7d2fe;border:1px solid #4338ca}
+.repro-summary-card{background:#091622;border:1px solid #1c354b;border-radius:8px;padding:14px;margin-bottom:14px}
+.repro-verdict{display:inline-block;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:.05em;margin-bottom:8px}
+.repro-verdict.fail{background:#450a0a;color:#fca5a5;border:1px solid #b91c1c}
+.repro-verdict.pass{background:#052e16;color:#86efac;border:1px solid #15803d}
+.repro-verdict.chain{background:#2e1065;color:#e9d5ff;border:1px solid #7e22ce}
+.repro-verdict.none{background:#1f2937;color:#d1d5db;border:1px solid #4b5563}
+.repro-steps-list{list-style:none;padding:0;margin:10px 0;display:grid;gap:6px}
+.repro-step-item{background:#04090e;border:1px solid #132433;border-radius:6px;padding:8px 10px;font-size:11px;display:flex;gap:8px;align-items:flex-start}
+.repro-step-num{background:#112333;color:var(--cyan);font-weight:700;border-radius:4px;padding:2px 6px;font-size:10px}
+
+/* External Issue Badges */
+.issue-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600;background:#0c1d2e;border:1px solid #1e3a5f;color:#60a5fa;text-decoration:none}
+.issue-badge:hover{background:#172e48;border-color:#3b82f6;color:#93c5fd}
+
+

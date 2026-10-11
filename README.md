@@ -6,7 +6,7 @@ TraceDeck captures browser bugs once and preserves the full context: screen reco
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-green.svg)](https://nodejs.org/)
-[![Tests](https://img.shields.io/badge/tests-25%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-34%20passing-brightgreen.svg)](tests/)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-0%20runtime-success.svg)](package.json)
 
 ---
@@ -15,12 +15,15 @@ TraceDeck captures browser bugs once and preserves the full context: screen reco
 
 - **Zero Runtime Dependencies**: Core server, dashboard, extension, SDK, and CLI operate purely on the Node.js standard library and native browser APIs.
 - **Chromium MV3 Extension**: Full-page screenshots via CDP, tab and window recording with offscreen `MediaRecorder`, rolling 2-minute context buffer, and console/network tap.
+- **W3C Distributed Tracing & OpenTelemetry**: Intercepts or generates standard `traceparent` context (`00-<trace_id>-<span_id>-01`) correlating front-end errors directly to backend APM traces (Jaeger, Datadog, Tempo).
+- **Lightweight DOM Mutation Telemetry**: rrweb-style non-intrusive DOM state change tracking and element snapshots with zero video encoding overhead.
+- **Automated Reproduction Runner**: Built-in verification engine tests live backend endpoints, checks action sequence viability, flags masked inputs, and produces ready-to-run Playwright tests.
 - **Dual Destination Modes**: Direct server upload or **Local-Only zero-network `.trace.zip` export** directly within the browser.
 - **Synchronized Evidence Timeline**: Interactive scrubber with millisecond precision, keyword search, log level filtering, HTTP status badges, and expandable event drawers.
 - **Client & Server Redaction**: Sensitive authorization headers, cookies, API tokens, passwords, and credit card numbers are scrubbed before capture and re-validated at ingest.
 - **Recording Links**: Zero-install browser recording links for non-technical reporters with optional Browser SDK integration.
 - **Automated Playwright Generation**: Instantly export captured actions and network calls as executable Playwright reproduction scripts (`.spec.ts`).
-- **External Issue Adapters**: Direct export to GitHub Issues, Linear, Jira Cloud, and Slack incoming webhooks.
+- **External Issue Adapters**: Direct export to GitHub Issues, Linear, Jira Cloud (Atlassian Document Format), and Slack incoming webhooks.
 - **Model Context Protocol (MCP) Server**: Native stdio MCP server for direct integration with AI coding assistants (Claude Code, Antigravity, Cursor).
 - **Pluggable Modular Storage**: Built-in `FileSystemStorageAdapter` and `MemoryStorageAdapter` with automated retention cleanup policies (TTL, count limit, and storage quotas).
 
@@ -116,15 +119,39 @@ node tools/cli/tracedeck.mjs list
 # Inspect capture details
 node tools/cli/tracedeck.mjs inspect <captureId>
 
+# Fast causal chain triage (Action -> Network -> Exception)
+node tools/cli/tracedeck.mjs triage <captureId>
+
+# Run automated reproduction verification
+node tools/cli/tracedeck.mjs reproduce <captureId>
+
 # Generate Playwright reproduction script
 node tools/cli/tracedeck.mjs playwright <captureId> --out repro.spec.ts
+
+# Export standard HTTP Archive (HAR 1.2)
+node tools/cli/tracedeck.mjs har <captureId> --out requests.har
+
+# Post comment or diagnostic note
+node tools/cli/tracedeck.mjs comment <captureId> "Root cause investigated"
+
+# File issue directly to Linear, Jira, or GitHub
+node tools/cli/tracedeck.mjs issue <captureId> linear '{"teamId":"ENG"}'
 
 # Export portable bundle
 node tools/cli/tracedeck.mjs export <captureId> --out issue.trace.zip
 ```
 
-### Model Context Protocol (MCP)
-Add TraceDeck as an MCP tool server in your AI coding assistant configuration:
+### Model Context Protocol (MCP) & AI Agent Skill
+TraceDeck includes an autonomous AI agent skill (`skills/tracedeck-debugger/SKILL.md`) and a stdio MCP server enabling AI coding agents to perform human-level debugging workflows:
+- `triage_capture`: Token-efficient causal chain extraction
+- `run_reproduction`: Automated reproduction verification and live endpoint probing
+- `generate_playwright`: Auto-generate reproduction specs
+- `create_capture`: File bug captures directly from agent automated runs
+- `add_comment`: Post diagnostic findings to timelines
+- `create_issue`: File tickets directly to Linear, Jira, or GitHub
+- `export_har`: Standard HTTP Archive generation
+
+Configure TraceDeck in your assistant:
 ```json
 {
   "mcpServers": {

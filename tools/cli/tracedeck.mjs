@@ -1,22 +1,200 @@
 #!/usr/bin/env node
 import fs from 'node:fs/promises';
-const args=process.argv.slice(2);const cmd=args.shift()||'help';
-function opt(name,def){const i=args.indexOf(name);return i>=0?args[i+1]:def}
-const base=(opt('--server',process.env.TRACEDECK_URL||'http://localhost:4177')).replace(/\/$/,'');
-const key=opt('--key',process.env.TRACEDECK_KEY||'td_local_dev');
-async function request(path,options={}){const r=await fetch(base+path,{...options,headers:{'x-tracedeck-key':key,...(options.headers||{})}});if(!r.ok)throw new Error(`${r.status} ${(await r.text()).slice(0,500)}`);return r}
-async function json(path,options){return (await request(path,options)).json()}
-async function main(){
-  if(cmd==='help'){console.log(`TraceDeck CLI\n\nCommands:\n  health\n  list\n  inspect <captureId>\n  analyze <captureId>\n  share <captureId>\n  playwright <captureId> [--out file]\n  export <captureId> [--out file]\n  import <capture.json>\n\nOptions: --server URL --key PROJECT_KEY`);return}
-  if(cmd==='health'){console.log(JSON.stringify(await json('/api/health'),null,2));return}
-  if(cmd==='list'){console.log(JSON.stringify(await json('/api/captures'),null,2));return}
-  const id=args[0];
-  if(cmd==='inspect'){console.log(JSON.stringify((await json('/api/captures/'+encodeURIComponent(id))).capture,null,2));return}
-  if(cmd==='analyze'){console.log(JSON.stringify(await json(`/api/captures/${encodeURIComponent(id)}/analyze`,{method:'POST',headers:{'content-type':'application/json'},body:'{}'}),null,2));return}
-  if(cmd==='share'){console.log(JSON.stringify(await json(`/api/captures/${encodeURIComponent(id)}/share`,{method:'POST',headers:{'content-type':'application/json'},body:'{}'}),null,2));return}
-  if(cmd==='playwright'){const out=opt('--out',`${id}.spec.ts`);await fs.writeFile(out,await (await request(`/api/captures/${encodeURIComponent(id)}/playwright`)).text());console.log(out);return}
-  if(cmd==='export'){const out=opt('--out',`${id}.trace.zip`);await fs.writeFile(out,Buffer.from(await (await request(`/api/captures/${encodeURIComponent(id)}/export`)).arrayBuffer()));console.log(out);return}
-  if(cmd==='import'){const file=args[0];const zip=/\.(trace\.)?zip$/i.test(file);const body=await fs.readFile(file);const r=await request('/api/captures/import',{method:'POST',headers:{'content-type':zip?'application/zip':'application/json'},body:zip?body:body.toString('utf8')});console.log(JSON.stringify(await r.json(),null,2));return}
-  throw new Error('Unknown command. Run `node tools/cli/tracedeck.mjs help`.')
+
+const args = process.argv.slice(2);
+const cmd = args.shift() || 'help';
+
+function opt(name, def) {
+  const i = args.indexOf(name);
+  return i >= 0 ? args[i + 1] : def;
 }
-main().catch(e=>{console.error('TraceDeck CLI:',e.message);process.exitCode=1});
+
+const base = (opt('--server', process.env.TRACEDECK_URL || 'http://localhost:4177')).replace(/\/$/, '');
+const key = opt('--key', process.env.TRACEDECK_KEY || 'td_local_dev');
+
+async function request(path, options = {}) {
+  const r = await fetch(base + path, {
+    ...options,
+    headers: {
+      'x-tracedeck-key': key,
+      ...(options.headers || {})
+    }
+  });
+  if (r.status === 204) return { ok: true, status: 204, json: async () => ({ success: true }) };
+  if (!r.ok) throw new Error(`${r.status} ${(await r.text()).slice(0, 500)}`);
+  return r;
+}
+
+async function json(path, options) {
+  return (await request(path, options)).json();
+}
+
+async function main() {
+  if (cmd === 'help') {
+    console.log(`TraceDeck CLI
+
+Commands:
+  health
+  list
+  inspect <captureId>
+  triage <captureId>
+  reproduce <captureId> [--no-check]
+  analyze <captureId>
+  share <captureId>
+  playwright <captureId> [--out file]
+  har <captureId> [--out file]
+  comment <captureId> <message>
+  issue <captureId> <provider> [optionsJson]
+  export <captureId> [--out file]
+  import <capture.json | file.trace.zip>
+  delete <captureId>
+  create <capture.json>
+
+Options:
+  --server URL       TraceDeck server (default http://localhost:4177)
+  --key PROJECT_KEY  Project access key (default td_local_dev)`);
+    return;
+  }
+
+  if (cmd === 'health') {
+    console.log(JSON.stringify(await json('/api/health'), null, 2));
+    return;
+  }
+
+  if (cmd === 'list') {
+    console.log(JSON.stringify(await json('/api/captures'), null, 2));
+    return;
+  }
+
+  const id = args[0];
+  const idCommands = ['inspect', 'triage', 'reproduce', 'analyze', 'share', 'playwright', 'har', 'comment', 'issue', 'delete', 'export'];
+  if (idCommands.includes(cmd) && !id) {
+    throw new Error(`Capture ID required for command '${cmd}'. Run 'node tools/cli/tracedeck.mjs help'.`);
+  }
+
+  if (cmd === 'inspect') {
+    console.log(JSON.stringify((await json(`/api/captures/${encodeURIComponent(id)}`)).capture, null, 2));
+    return;
+  }
+
+  if (cmd === 'triage') {
+    console.log(JSON.stringify(await json(`/api/captures/${encodeURIComponent(id)}/triage`), null, 2));
+    return;
+  }
+
+  if (cmd === 'reproduce') {
+    const noCheck = args.includes('--no-check');
+    console.log(JSON.stringify(await json(`/api/captures/${encodeURIComponent(id)}/reproduce`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ checkEndpoints: !noCheck })
+    }), null, 2));
+    return;
+  }
+
+  if (cmd === 'analyze') {
+    console.log(JSON.stringify(await json(`/api/captures/${encodeURIComponent(id)}/analyze`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}'
+    }), null, 2));
+    return;
+  }
+
+  if (cmd === 'share') {
+    console.log(JSON.stringify(await json(`/api/captures/${encodeURIComponent(id)}/share`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}'
+    }), null, 2));
+    return;
+  }
+
+  if (cmd === 'playwright') {
+    const out = opt('--out', `${id}.spec.ts`);
+    await fs.writeFile(out, await (await request(`/api/captures/${encodeURIComponent(id)}/playwright`)).text());
+    console.log(out);
+    return;
+  }
+
+  if (cmd === 'har') {
+    const out = opt('--out', `${id}.har`);
+    await fs.writeFile(out, await (await request(`/api/captures/${encodeURIComponent(id)}/har`)).text());
+    console.log(out);
+    return;
+  }
+
+  if (cmd === 'comment') {
+    const body = args[1] || '';
+    if (!body) throw new Error('Comment message required');
+    const r = await json(`/api/captures/${encodeURIComponent(id)}/comments`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ author: 'CLI', body })
+    });
+    console.log(JSON.stringify(r, null, 2));
+    return;
+  }
+
+  if (cmd === 'issue') {
+    const provider = args[1];
+    let options = {};
+    if (args[2]) {
+      try { options = JSON.parse(args[2]); } catch { throw new Error('Options must be valid JSON'); }
+    }
+    const r = await json(`/api/captures/${encodeURIComponent(id)}/issues`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ provider, options })
+    });
+    console.log(JSON.stringify(r, null, 2));
+    return;
+  }
+
+  if (cmd === 'delete') {
+    await request(`/api/captures/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    console.log(`Deleted capture ${id}`);
+    return;
+  }
+
+  if (cmd === 'export') {
+    const out = opt('--out', `${id}.trace.zip`);
+    await fs.writeFile(out, Buffer.from(await (await request(`/api/captures/${encodeURIComponent(id)}/export`)).arrayBuffer()));
+    console.log(out);
+    return;
+  }
+
+  if (cmd === 'import') {
+    const file = args[0];
+    if (!file) throw new Error('File path required for import. Run `node tools/cli/tracedeck.mjs help`.');
+    const zip = /\.(trace\.)?zip$/i.test(file);
+    const body = await fs.readFile(file);
+    const r = await request('/api/captures/import', {
+      method: 'POST',
+      headers: { 'content-type': zip ? 'application/zip' : 'application/json' },
+      body: zip ? body : body.toString('utf8')
+    });
+    console.log(JSON.stringify(await r.json(), null, 2));
+    return;
+  }
+
+  if (cmd === 'create') {
+    const file = args[0];
+    if (!file) throw new Error('File path required for create. Run `node tools/cli/tracedeck.mjs help`.');
+    const content = await fs.readFile(file, 'utf8');
+    const r = await request('/api/captures', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: content
+    });
+    console.log(JSON.stringify(await r.json(), null, 2));
+    return;
+  }
+
+  throw new Error('Unknown command. Run `node tools/cli/tracedeck.mjs help`.');
+}
+
+main().catch((e) => {
+  console.error('TraceDeck CLI:', e.message);
+  process.exitCode = 1;
+});

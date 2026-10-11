@@ -137,6 +137,7 @@ function eventLabel(e) {
   if (e.type === 'network') return `${d.method || 'GET'} ${d.url || ''}`;
   if (e.type === 'action') return d.label || `${d.action || 'interaction'} ${d.selector || d.target || ''}`;
   if (e.type === 'navigation') return d.url || d.to || 'Navigation';
+  if (e.type === 'dom') return d.summary || `${d.kind || 'mutation'} ${d.selector || d.target || ''}`;
   if (e.type === 'app') return d.message || d.name || JSON.stringify(d);
   return JSON.stringify(d);
 }
@@ -155,6 +156,7 @@ function getCategoryCounts(events = []) {
     console: events.filter((e) => e.type === 'console').length,
     network: events.filter((e) => e.type === 'network').length,
     action: events.filter((e) => e.type === 'action').length,
+    dom: events.filter((e) => e.type === 'dom').length,
     errors: events.filter((e) => eventClass(e) === 'error').length
   };
 }
@@ -169,10 +171,29 @@ function renderEventDetailDrawer(e, idx) {
   ];
   if (e.level || d.level) metaItems.push(`<div class="detail-item"><label>Level</label><span>${escapeHtml(e.level || d.level)}</span></div>`);
   if (d.status) metaItems.push(`<div class="detail-item"><label>HTTP Status</label><span>${escapeHtml(d.status)} ${escapeHtml(d.statusText || '')}</span></div>`);
-  if (d.duration != null) metaItems.push(`<div class="detail-item"><label>Duration</label><span>${d.duration}ms</span></div>`);
+  if (d.duration != null || d.durationMs != null) metaItems.push(`<div class="detail-item"><label>Duration</label><span>${d.duration ?? d.durationMs}ms</span></div>`);
   if (d.method) metaItems.push(`<div class="detail-item"><label>Method</label><span>${escapeHtml(d.method)}</span></div>`);
   if (d.phase) metaItems.push(`<div class="detail-item"><label>Phase</label><span>${escapeHtml(d.phase)}</span></div>`);
   sections.push(`<div class="event-detail-grid">${metaItems.join('')}</div>`);
+
+  if (d.traceparent || d.traceId) {
+    const tp = d.traceparent || `00-${d.traceId}-${d.spanId || '0000000000000000'}-01`;
+    const traceId = d.traceId || tp.split('-')[1];
+    const viewerTemplate = state.config?.telemetry?.traceViewerUrl;
+    const viewerUrl = viewerTemplate
+      ? viewerTemplate.replace('{traceId}', traceId).replace('{traceparent}', tp)
+      : null;
+    sections.push(`
+      <div class="detail-item otel-trace-item">
+        <label>W3C Distributed Trace (OpenTelemetry)</label>
+        <div class="row" style="gap:8px; align-items:center; flex-wrap:wrap; margin-top:4px">
+          <code style="color:#c084fc; font-weight:600">${escapeHtml(tp)}</code>
+          <button class="button small copy-trace" data-trace="${escapeHtml(tp)}">Copy traceparent</button>
+          ${viewerUrl ? `<a href="${escapeHtml(viewerUrl)}" target="_blank" class="button small" style="background:#7e22ce">Open Backend Trace ↗</a>` : ''}
+        </div>
+      </div>
+    `);
+  }
 
   if (e.type === 'network') {
     if (d.url) sections.push(`<div class="detail-item"><label>URL</label><code>${escapeHtml(d.url)}</code></div>`);
@@ -184,6 +205,16 @@ function renderEventDetailDrawer(e, idx) {
     const resHeaders = Object.entries(d.responseHeaders || {});
     if (resHeaders.length) {
       sections.push(`<div class="detail-item"><label>Response Headers (${resHeaders.length})</label><table class="headers-table">${resHeaders.map(([k, v]) => `<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(typeof v === 'object' ? JSON.stringify(v) : v)}</td></tr>`).join('')}</table></div>`);
+    }
+  }
+
+  if (e.type === 'dom') {
+    if (d.kind) sections.push(`<div class="detail-item"><label>DOM Kind</label><span>${escapeHtml(d.kind)}</span></div>`);
+    if (d.summary) sections.push(`<div class="detail-item"><label>Summary</label><span>${escapeHtml(d.summary)}</span></div>`);
+    if (d.target || d.selector) sections.push(`<div class="detail-item"><label>Target Element</label><code>${escapeHtml(d.target || d.selector)}</code></div>`);
+    if (d.html) sections.push(`<div class="detail-item"><label>DOM Snapshot</label><pre class="stack-trace" style="color:#93c5fd; border-color:#1e3a8a"><code>${escapeHtml(d.html)}</code></pre></div>`);
+    if (Array.isArray(d.mutations) && d.mutations.length) {
+      sections.push(`<div class="detail-item"><label>Mutations (${d.mutations.length})</label><table class="headers-table">${d.mutations.map((m) => `<tr><td>${escapeHtml(m.type)}</td><td><code>${escapeHtml(m.target)}</code></td><td>${escapeHtml(m.attr ? 'attr:' + m.attr : (m.added ? '+' + m.added : '') + (m.removed ? ' -' + m.removed : ''))}</td></tr>`).join('')}</table></div>`);
     }
   }
 
@@ -293,10 +324,11 @@ function renderEvents(capture) {
   } else {
     tableHtml = `<div class="event-table">${filtered.map((e, i) => {
       const isExpanded = state.expandedEventIdx === i;
+      const otelPill = (e.type === 'network' && (e.data?.traceparent || e.data?.traceId)) ? '<span class="otel-badge">OTEL</span>' : (e.type === 'dom') ? '<span class="otel-badge dom-badge">DOM</span>' : '';
       return `
         <div class="event-row has-detail ${eventClass(e)} ${isExpanded ? 'expanded' : ''}" data-ts="${e.ts}" data-idx="${i}">
           <span class="event-time">${fmtTime(e.ts)}</span>
-          <span class="event-type">${escapeHtml(e.type)}</span>
+          <span class="event-type">${escapeHtml(e.type)}${otelPill}</span>
           <span class="event-msg">${escapeHtml(eventLabel(e))}</span>
           <span class="event-extra">${escapeHtml(eventExtra(e))}</span>
         </div>
@@ -348,6 +380,14 @@ function renderEvents(capture) {
       if (targetEvent) {
         copy(JSON.stringify(targetEvent, null, 2));
       }
+    });
+  });
+
+  $$('.copy-trace', holder).forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const tr = btn.dataset.trace;
+      if (tr) copy(tr);
     });
   });
 }
@@ -435,13 +475,18 @@ function renderDetail(capture, shared) {
   const analysis = capture.analysis ? `<div class="analysis"><h3>AI / local analysis</h3><p>${escapeHtml(capture.analysis.summary || '')}</p>${capture.analysis.reproductionSteps ? `<h3 style="margin-top:12px">Reproduction</h3><pre>${escapeHtml(capture.analysis.reproductionSteps)}</pre>` : ''}${capture.analysis.likelyCause ? `<h3 style="margin-top:12px">Likely cause</h3><p>${escapeHtml(capture.analysis.likelyCause)}</p>` : ''}</div>` : `<div class="panel-card"><p>No analysis has been generated yet.</p></div>`;
   const comments = (capture.comments || []).map((c) => `<div class="comment"><span>${escapeHtml(c.author)} · ${ago(c.createdAt)}${c.ts != null ? ` · ${fmtTime(c.ts)}` : ''}</span><p>${escapeHtml(c.body)}</p></div>`).join('') || `<p class="muted">No comments yet.</p>`;
   const issueButtons = !shared ? `<button class="button small" id="create-issue">Create issue</button>` : '';
-  const actions = shared ? '' : `<div class="detail-actions"><button class="button small" id="analyze">Analyze</button>${issueButtons}<button class="button small" id="share">Share</button><button class="button small" id="playwright">Playwright</button><button class="button small" id="export">Export .trace</button><button class="button small danger" id="delete-capture">Delete</button></div>`;
+  const issueBadges = (capture.externalIssues || []).map((iss) => {
+    const icon = iss.provider === 'github' ? '🐙' : iss.provider === 'linear' ? '📐' : iss.provider === 'jira' ? '🔷' : '💬';
+    return iss.url
+      ? `<a href="${escapeHtml(iss.url)}" target="_blank" class="issue-badge" title="${escapeHtml(iss.title || iss.id)}">${icon} ${escapeHtml(iss.provider)}: ${escapeHtml(iss.id)} ↗</a>`
+      : `<span class="issue-badge">${icon} ${escapeHtml(iss.provider)}: ${escapeHtml(iss.id)}</span>`;
+  }).join(' ');
   
-  $('#detail').innerHTML = `<header class="detail-head"><div class="detail-head-top"><h1>${escapeHtml(capture.title)}</h1>${actions}</div><div class="detail-sub"><span class="source-chip">${escapeHtml(capture.source)}</span><span>${new Date(capture.createdAt).toLocaleString()}</span><span>•</span><span>${escapeHtml(capture.url || 'No URL')}</span></div></header>
+  $('#detail').innerHTML = `<header class="detail-head"><div class="detail-head-top"><h1>${escapeHtml(capture.title)}</h1>${actions}</div><div class="detail-sub"><span class="source-chip">${escapeHtml(capture.source)}</span><span>${new Date(capture.createdAt).toLocaleString()}</span><span>•</span><span>${escapeHtml(capture.url || 'No URL')}</span>${issueBadges ? '<span>•</span>' + issueBadges : ''}</div></header>
     <div class="detail-body">
     ${renderMediaGallery(capture)}
     <div class="timeline" id="timeline"><div class="timeline-line"><div id="timeline-progress" class="timeline-progress"></div><div id="timeline-scrubber" class="timeline-scrubber"></div></div><div id="timeline-tooltip" class="timeline-tooltip"></div>${markers}</div>
-    <div class="tabbar"><button class="tab active" data-tab="all">All</button><button class="tab" data-tab="console">Console</button><button class="tab" data-tab="network">Network</button><button class="tab" data-tab="action">Actions</button><button class="tab" data-tab="errors">Errors</button><button class="tab" data-tab="environment">Environment</button><button class="tab" data-tab="metadata">App data</button><button class="tab" data-tab="analysis">Analysis</button></div>
+    <div class="tabbar"><button class="tab active" data-tab="all">All</button><button class="tab" data-tab="console">Console</button><button class="tab" data-tab="network">Network</button><button class="tab" data-tab="action">Actions</button><button class="tab" data-tab="dom">DOM</button><button class="tab" data-tab="errors">Errors</button><button class="tab" data-tab="environment">Environment</button><button class="tab" data-tab="metadata">App data</button><button class="tab" data-tab="analysis">Analysis</button></div>
     <div id="event-content"></div>
     <h3 class="section-title">Comments</h3><div class="comments">${comments}</div>${shared ? '' : `<form id="comment-form" class="comment-form"><input class="input" name="body" required placeholder="Add context or a timestamped note…"/><button class="button">Comment</button></form>`}
     </div>`;
@@ -499,7 +544,88 @@ function bindDetailActions(capture) {
   $('#analyze')?.addEventListener('click', async () => { $('#analyze').disabled = true; try { const r = await api(`/api/captures/${capture.id}/analyze`, { method: 'POST', body: {} }); capture.analysis = r.analysis; toast('Analysis generated'); renderDetail(capture, false); } catch (e) { toast(e.message); } });
   $('#share')?.addEventListener('click', async () => { try { const r = await api(`/api/captures/${capture.id}/share`, { method: 'POST', body: {} }); copy(r.url); } catch (e) { toast(e.message); } });
   $('#export')?.addEventListener('click', () => location.href = `/api/captures/${capture.id}/export`);
+  $('#export-har')?.addEventListener('click', () => location.href = `/api/captures/${capture.id}/har`);
   $('#playwright')?.addEventListener('click', () => location.href = `/api/captures/${capture.id}/playwright`);
+  $('#reproduce')?.addEventListener('click', async () => {
+    $('#reproduce').disabled = true;
+    toast('Running reproduction check…');
+    try {
+      const res = await api(`/api/captures/${capture.id}/reproduce`, { method: 'POST', body: { checkEndpoints: true } });
+      const repro = res.reproduction;
+      const verdictCls = repro.verdict === 'REPRODUCED_FAILING_ENDPOINT' ? 'fail'
+        : repro.verdict === 'POTENTIALLY_RESOLVED' ? 'pass'
+        : repro.verdict === 'VERIFIED_ACTION_CHAIN' ? 'chain' : 'none';
+
+      const checksHtml = (repro.endpointChecks || []).length ? `
+        <div style="margin-top:12px">
+          <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase">Endpoint Health Checks</label>
+          <table class="headers-table" style="margin-top:6px">
+            <tr><th>Method & URL</th><th>Captured</th><th>Live Status</th><th>Result</th></tr>
+            ${repro.endpointChecks.map((c) => `
+              <tr>
+                <td><code>${escapeHtml(c.method)} ${escapeHtml(c.url)}</code></td>
+                <td>${c.capturedStatus}</td>
+                <td>${c.liveStatus || 'Error'}</td>
+                <td style="color:${c.reproduced ? 'var(--red)' : '#86efac'}">${escapeHtml(c.detail)}</td>
+              </tr>
+            `).join('')}
+          </table>
+        </div>
+      ` : '';
+
+      const stepsHtml = (repro.steps || []).length ? `
+        <div style="margin-top:12px">
+          <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase">Action Steps (${repro.steps.length})</label>
+          <ul class="repro-steps-list">
+            ${repro.steps.map((s) => `
+              <li class="repro-step-item">
+                <span class="repro-step-num">#${s.step}</span>
+                <div><b>${escapeHtml(s.action)}</b>: ${escapeHtml(s.description)}</div>
+              </li>
+            `).join('')}
+          </ul>
+        </div>
+      ` : '';
+
+      const missingHtml = (repro.missingInputs || []).length ? `
+        <div style="margin-top:10px;padding:8px 10px;border-radius:6px;background:#451a03;border:1px solid #b45309;font-size:11px;color:#fde68a">
+          <b>Sensitive Inputs Masked:</b> Provide mock values for: ${repro.missingInputs.map((m) => `<code>${escapeHtml(m.selector || m.label)}</code>`).join(', ')}.
+        </div>
+      ` : '';
+
+      const scriptHtml = `
+        <div style="margin-top:12px">
+          <div class="row" style="justify-content:space-between;margin-bottom:6px">
+            <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase">Playwright Reproduction Spec</label>
+            <button class="button small copy-repro-spec" type="button">Copy Spec</button>
+          </div>
+          <pre class="stack-trace" style="color:#b9d5ec;border-color:var(--line);max-height:220px"><code>${escapeHtml(repro.playwrightScript)}</code></pre>
+        </div>
+      `;
+
+      const body = `
+        <div class="repro-summary-card">
+          <span class="repro-verdict ${verdictCls}">${escapeHtml(repro.verdict)}</span>
+          <p style="font-size:13px;margin:6px 0;font-weight:600">${escapeHtml(repro.summary)}</p>
+          <p class="muted" style="font-size:11px">${escapeHtml(repro.recommendation)}</p>
+          ${missingHtml}
+          ${checksHtml}
+          ${stepsHtml}
+          ${scriptHtml}
+        </div>
+      `;
+
+      showModal(`Automated Reproduction: ${escapeHtml(capture.title)}`, body, () => {});
+      $('.copy-repro-spec')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        copy(repro.playwrightScript);
+      });
+    } catch (err) {
+      toast(err.message);
+    } finally {
+      $('#reproduce').disabled = false;
+    }
+  });
   $('#create-issue')?.addEventListener('click', () => issueModal(capture));
   $('#delete-capture')?.addEventListener('click', async () => {
     if (!confirm(`Delete capture "${capture.title}"? This cannot be undone.`)) return;
@@ -528,6 +654,7 @@ function showModal(title, html, onConfirm) {
   form.onsubmit = handler; modal.showModal();
 }
 function issueModal(capture) {
+  const cfg = state.config?.integrationStatus || {};
   const templates = {
     github: JSON.stringify({ repo: 'owner/repo' }, null, 2),
     linear: JSON.stringify({ teamId: 'YOUR_TEAM_ID' }, null, 2),
@@ -535,23 +662,25 @@ function issueModal(capture) {
     slack: JSON.stringify({ webhookUrl: 'https://hooks.slack.com/services/...' }, null, 2)
   };
 
+  const getStatusText = (prov) => cfg[prov]
+    ? '<span style="color:#86efac;font-weight:600">✓ Server credentials configured</span>'
+    : '<span style="color:var(--muted)">Optional: Provide token/credentials in JSON or set server env vars</span>';
+
   showModal('Create external issue', `
     <div class="field">
       <label>Provider</label>
       <select id="issue-provider" name="provider">
-        <option value="github">GitHub Issues</option>
-        <option value="linear">Linear</option>
-        <option value="jira">Jira Cloud</option>
-        <option value="slack">Slack</option>
+        <option value="github">GitHub Issues ${cfg.github ? '✓' : ''}</option>
+        <option value="linear">Linear ${cfg.linear ? '✓' : ''}</option>
+        <option value="jira">Jira Cloud ${cfg.jira ? '✓' : ''}</option>
+        <option value="slack">Slack ${cfg.slack ? '✓' : ''}</option>
       </select>
     </div>
+    <div id="provider-status" style="font-size:11px;margin-bottom:10px">${getStatusText('github')}</div>
     <div class="field">
       <label>Provider options (JSON)</label>
       <textarea id="issue-options" name="options" rows="7" class="mono">${escapeHtml(templates.github)}</textarea>
     </div>
-    <p class="muted" style="font-size:11px;margin-top:6px">
-      Credentials can be set via server env vars (<code>TRACEDECK_LINEAR_TOKEN</code>, <code>TRACEDECK_JIRA_TOKEN</code>, <code>TRACEDECK_JIRA_EMAIL</code>) or passed directly in options as <code>token</code>, <code>email</code>.
-    </p>
   `, async (fd) => {
     let options; try { options = JSON.parse(fd.get('options') || '{}'); } catch { throw new Error('Options must be valid JSON'); }
     const r = await api(`/api/captures/${capture.id}/issues`, { method: 'POST', body: { provider: fd.get('provider'), options } });
@@ -560,9 +689,11 @@ function issueModal(capture) {
 
   const select = $('#issue-provider');
   const textarea = $('#issue-options');
+  const statusEl = $('#provider-status');
   if (select && textarea) {
     select.addEventListener('change', () => {
       textarea.value = templates[select.value] || '{}';
+      if (statusEl) statusEl.innerHTML = getStatusText(select.value);
     });
   }
 }

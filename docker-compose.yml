@@ -20,6 +20,7 @@ services:
       TRACEDECK_JIRA_EMAIL: ${TRACEDECK_JIRA_EMAIL:-}
       TRACEDECK_JIRA_TOKEN: ${TRACEDECK_JIRA_TOKEN:-}
       TRACEDECK_SLACK_WEBHOOK_URL: ${TRACEDECK_SLACK_WEBHOOK_URL:-}
+      TRACEDECK_TRACE_VIEWER_URL: ${TRACEDECK_TRACE_VIEWER_URL:-}
     volumes:
       - tracedeck_data:/var/lib/tracedeck
     restart: unless-stopped

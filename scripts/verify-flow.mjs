@@ -103,6 +103,18 @@ try {
   const pwCode = await (await fetch(base + `/api/captures/${capId}/playwright`)).text();
   if (!pwCode.includes('@playwright/test') || !pwCode.includes('#checkout')) throw new Error('Playwright script generation failed');
 
+  // AI Causal Triage
+  const triageRes = await (await fetch(base + `/api/captures/${capId}/triage`)).json();
+  if (!triageRes.triage?.causalChain?.length || triageRes.triage.severity !== 'critical') throw new Error('Triage check failed');
+
+  // HAR 1.2 Export
+  const harRes = await (await fetch(base + `/api/captures/${capId}/har`)).json();
+  if (harRes.log?.version !== '1.2' || harRes.log?.entries?.length !== 1) throw new Error('HAR export check failed');
+
+  // Automated Reproduction
+  const reproRes = await (await fetch(base + `/api/captures/${capId}/reproduce?checkEndpoints=false`)).json();
+  if (!reproRes.reproduction?.verdict || !reproRes.reproduction?.playwrightScript) throw new Error('Reproduction check failed');
+
   // Export .trace.zip
   const expZip = Buffer.from(await (await fetch(base + `/api/captures/${capId}/export`)).arrayBuffer());
   const zipCheck = validateZip(expZip);

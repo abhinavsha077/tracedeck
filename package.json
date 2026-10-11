@@ -13,6 +13,7 @@
     "test:flow": "node scripts/verify-flow.mjs",
     "seed": "node scripts/seed.mjs",
     "pack:extension": "node scripts/pack-extension.mjs",
+    "build": "node scripts/pack-extension.mjs",
     "check": "npm test && npm run smoke && npm run test:flow"
   },
   "engines": {

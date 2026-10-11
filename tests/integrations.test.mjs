@@ -129,4 +129,25 @@ test('Slack adapter posts formatted message to incoming webhook', async () => {
   assert.equal(capturedReq.url, 'https://hooks.slack.com/services/T00/B00/X00');
   const body = JSON.parse(capturedReq.options.body);
   assert.match(body.text, /\*Bug: Payment flow crashed\*/);
+  assert(Array.isArray(body.blocks));
+  assert.equal(body.blocks[0].type, 'header');
+  assert.equal(body.blocks[2].type, 'actions');
+});
+
+test('GitHub adapter normalizes full repository URLs cleanly', async () => {
+  let capturedReq;
+  const mockFetch = async (url, options) => {
+    capturedReq = { url, options };
+    return new Response(JSON.stringify({ number: 99, html_url: 'https://github.com/acme/app/issues/99', title: 'Issue 99' }), { status: 201, headers: { 'content-type': 'application/json' } });
+  };
+
+  const issue = await createExternalIssue('github', sampleCapture, {
+    token: 'gh_test_token',
+    repo: 'https://github.com/acme/app/'
+  }, {}, 'http://localhost:4177', mockFetch);
+
+  assert.equal(issue.id, '99');
+  assert.equal(capturedReq.url, 'https://api.github.com/repos/acme/app/issues');
+  const parsed = JSON.parse(capturedReq.options.body);
+  assert.deepEqual(parsed.labels, ['bug', 'tracedeck']);
 });
