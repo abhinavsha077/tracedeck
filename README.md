@@ -6,13 +6,24 @@ TraceDeck captures browser bugs once and preserves the full context: screen reco
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-green.svg)](https://nodejs.org/)
-[![Tests](https://img.shields.io/badge/tests-34%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-46%20passing-brightgreen.svg)](tests/)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-0%20runtime-success.svg)](package.json)
 
 ---
 
 ## Features
 
+- **Autonomous UI Audit Studio**: Autonomous route crawler, control inventory, and pure Node.js pixel-by-pixel PNG visual diff engine (`diff.mjs`, `audit.mjs`).
+- **AI-Control Worktree Auto-Fixer**: Dispatches structured bug capsules and branches isolated Git worktrees (`fix/td-<id>`) for automated AI resolution.
+- **Deep AI Superpowers**:
+  - **API Schema Drift**: Inferred JSON schemas and contract diffing to catch silent null/omitted field crashes.
+  - **Compact A11y Tree & Click-Traps**: Condenses DOM by >90% for LLMs and alerts on invisible overlay interceptors.
+  - **Network Chaos Replay**: Generates Playwright tests with latency jitter, arrival inversion, and burst clicks.
+  - **Component Blast-Radius Lineage**: Traces User Action -> Component -> State Mutation -> Network error.
+- **Offline Network Mock Generator**: Converts captured requests into Mock Service Worker (`handlers.js`) or standalone Fetch mocks.
+- **Source Map Symbolicator**: Zero-dependency Base64 VLQ unminifier and original TypeScript code-frame extractor.
+- **Gre-Tester Security Fuzzer**: Non-destructive reflected XSS, arbitrary CORS reflection, and open redirect auditor.
+- **Complete Superpowers Guide**: See [docs/SUPERPOWERS_GUIDE.md](docs/SUPERPOWERS_GUIDE.md) for full usage instructions and use cases.
 - **Zero Runtime Dependencies**: Core server, dashboard, extension, SDK, and CLI operate purely on the Node.js standard library and native browser APIs.
 - **Chromium MV3 Extension**: Full-page screenshots via CDP, tab and window recording with offscreen `MediaRecorder`, rolling 2-minute context buffer, and console/network tap.
 - **W3C Distributed Tracing & OpenTelemetry**: Intercepts or generates standard `traceparent` context (`00-<trace_id>-<span_id>-01`) correlating front-end errors directly to backend APM traces (Jaeger, Datadog, Tempo).

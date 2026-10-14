@@ -126,6 +126,108 @@ const tools = [
     name: 'delete_capture',
     description: 'Permanently delete a capture and its associated artifacts and comments.',
     inputSchema: { type: 'object', required: ['captureId'], properties: { captureId: { type: 'string' } } }
+  },
+  {
+    name: 'start_audit',
+    description: 'Launch autonomous UI audit crawl on a target web application URL, discovering broken routes, controls, and generating bug captures.',
+    inputSchema: {
+      type: 'object',
+      required: ['url'],
+      properties: {
+        url: { type: 'string', description: 'Target website or web application URL to audit' },
+        maxRoutes: { type: 'number', description: 'Maximum number of routes to crawl (default: 15)' }
+      }
+    }
+  },
+  {
+    name: 'list_audits',
+    description: 'List all recorded autonomous UI audits and their crawl summaries.',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'export_mocks',
+    description: 'Export captured network requests as offline mock handlers (MSW or standalone Fetch interceptor).',
+    inputSchema: {
+      type: 'object',
+      required: ['captureId'],
+      properties: {
+        captureId: { type: 'string' },
+        format: { type: 'string', enum: ['msw', 'fetch'], description: 'Mock format (default: msw)' }
+      }
+    }
+  },
+  {
+    name: 'auto_fix_capture',
+    description: 'Generate an AI-Control task capsule and isolated Git worktree branch to fix the captured bug.',
+    inputSchema: {
+      type: 'object',
+      required: ['captureId'],
+      properties: {
+        captureId: { type: 'string' }
+      }
+    }
+  },
+  {
+    name: 'run_security_probe',
+    description: 'Execute non-destructive security probes (CORS misconfiguration, reflected XSS, open redirects, missing headers) on a capture target URL.',
+    inputSchema: {
+      type: 'object',
+      required: ['captureId'],
+      properties: {
+        captureId: { type: 'string' }
+      }
+    }
+  },
+  {
+    name: 'check_schema_drift',
+    description: 'Infer JSON schema from captured API traffic, compare against expected JSON contracts or baseline schemas, and detect missing keys, nullable type shifts, or unexpected payload changes.',
+    inputSchema: {
+      type: 'object',
+      required: ['captureId'],
+      properties: {
+        captureId: { type: 'string' },
+        contracts: {
+          type: 'object',
+          description: 'Map of "METHOD URL" -> expected JSON Schema object'
+        }
+      }
+    }
+  },
+  {
+    name: 'get_a11y_tree',
+    description: 'Get compact Playwright-style accessibility tree from captured DOM snapshot (95% token savings vs raw HTML) and detect invisible click-trap overlays or unnamed controls.',
+    inputSchema: {
+      type: 'object',
+      required: ['captureId'],
+      properties: {
+        captureId: { type: 'string' },
+        html: { type: 'string', description: 'Optional raw HTML override to parse' }
+      }
+    }
+  },
+  {
+    name: 'generate_chaos_repro',
+    description: 'Generate a Playwright chaos replay test that injects network latency jitter, inverts arrival order, and executes double-click bursts to trigger frontend race conditions.',
+    inputSchema: {
+      type: 'object',
+      required: ['captureId'],
+      properties: {
+        captureId: { type: 'string' },
+        jitterMs: { type: 'number', description: 'Artificial network latency jitter in ms (default: 500)' },
+        burstClicks: { type: 'boolean', description: 'Duplicate user action clicks to test debounce handling (default: true)' }
+      }
+    }
+  },
+  {
+    name: 'get_component_lineage',
+    description: 'Trace causal blast-radius: link triggering DOM action to UI component, subsequent state slice mutations, and downstream network request failures or console exceptions.',
+    inputSchema: {
+      type: 'object',
+      required: ['captureId'],
+      properties: {
+        captureId: { type: 'string' }
+      }
+    }
   }
 ];
 
@@ -173,6 +275,55 @@ async function call(name, a = {}) {
   }
   if (name === 'delete_capture') {
     return result(await api(`/api/captures/${encodeURIComponent(a.captureId)}`, { method: 'DELETE' }));
+  }
+  if (name === 'start_audit') {
+    return result(await api('/api/audit/start', {
+      method: 'POST',
+      body: { url: a.url, maxRoutes: a.maxRoutes || 15 }
+    }));
+  }
+  if (name === 'list_audits') {
+    return result(await api('/api/audit'));
+  }
+  if (name === 'export_mocks') {
+    const fmt = a.format || 'msw';
+    const r = await fetch(base + `/api/captures/${encodeURIComponent(a.captureId)}/mocks?format=${encodeURIComponent(fmt)}`, {
+      headers: { 'x-tracedeck-key': key }
+    });
+    return result(await r.text());
+  }
+  if (name === 'auto_fix_capture') {
+    return result(await api(`/api/captures/${encodeURIComponent(a.captureId)}/auto-fix`, {
+      method: 'POST',
+      body: {}
+    }));
+  }
+  if (name === 'run_security_probe') {
+    return result(await api(`/api/captures/${encodeURIComponent(a.captureId)}/security-probe`, {
+      method: 'POST',
+      body: {}
+    }));
+  }
+  if (name === 'check_schema_drift') {
+    return result(await api(`/api/captures/${encodeURIComponent(a.captureId)}/schema-drift`, {
+      method: 'POST',
+      body: { contracts: a.contracts || {} }
+    }));
+  }
+  if (name === 'get_a11y_tree') {
+    return result(await api(`/api/captures/${encodeURIComponent(a.captureId)}/a11y-tree`, {
+      method: 'POST',
+      body: a.html ? { html: a.html } : {}
+    }));
+  }
+  if (name === 'generate_chaos_repro') {
+    const r = await fetch(base + `/api/captures/${encodeURIComponent(a.captureId)}/chaos`, {
+      headers: { 'x-tracedeck-key': key }
+    });
+    return result(await r.text());
+  }
+  if (name === 'get_component_lineage') {
+    return result(await api(`/api/captures/${encodeURIComponent(a.captureId)}/lineage`));
   }
 
   const c = (await api(`/api/captures/${encodeURIComponent(a.captureId)}`)).capture;

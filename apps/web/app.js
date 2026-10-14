@@ -48,6 +48,7 @@ async function bootstrap() {
     return;
   }
   await loadCaptures();
+  await loadAudits();
   await loadLinks();
   await loadWebhooks();
   renderSettings();
@@ -481,7 +482,26 @@ function renderDetail(capture, shared) {
       ? `<a href="${escapeHtml(iss.url)}" target="_blank" class="issue-badge" title="${escapeHtml(iss.title || iss.id)}">${icon} ${escapeHtml(iss.provider)}: ${escapeHtml(iss.id)} ↗</a>`
       : `<span class="issue-badge">${icon} ${escapeHtml(iss.provider)}: ${escapeHtml(iss.id)}</span>`;
   }).join(' ');
-  
+  const actions = shared ? '' : `
+    <div class="detail-actions">
+      <button class="button small" id="auto-fix" style="background:#4f46e5;color:white" title="Route bug to AI-Control Plane worktree">⚡ Auto-Fix (AI)</button>
+      <button class="button small" id="reproduce">Reproduction check</button>
+      <button class="button small" id="schema-drift" title="Infer API schemas and check contract drift">Schema Drift</button>
+      <button class="button small" id="a11y-tree" title="View compact a11y tree & click-traps">A11y & Traps</button>
+      <button class="button small" id="chaos-spec" title="Download Playwright network chaos reproduction test">Chaos Repro</button>
+      <button class="button small" id="lineage" title="Trace component and state blast radius">Lineage</button>
+      <button class="button small" id="security-probe" title="Run security probes">Security probe</button>
+      <button class="button small" id="export-mocks" title="Download offline MSW mock handlers">Offline mocks</button>
+      <button class="button small" id="analyze">AI Analysis</button>
+      <button class="button small" id="share">Share</button>
+      <button class="button small" id="playwright">Playwright spec</button>
+      <button class="button small" id="export-har">HAR</button>
+      <button class="button small" id="export">Export .trace</button>
+      ${issueButtons}
+      <button class="button small danger" id="delete">Delete</button>
+    </div>
+  `;
+
   $('#detail').innerHTML = `<header class="detail-head"><div class="detail-head-top"><h1>${escapeHtml(capture.title)}</h1>${actions}</div><div class="detail-sub"><span class="source-chip">${escapeHtml(capture.source)}</span><span>${new Date(capture.createdAt).toLocaleString()}</span><span>•</span><span>${escapeHtml(capture.url || 'No URL')}</span>${issueBadges ? '<span>•</span>' + issueBadges : ''}</div></header>
     <div class="detail-body">
     ${renderMediaGallery(capture)}
@@ -626,8 +646,204 @@ function bindDetailActions(capture) {
       $('#reproduce').disabled = false;
     }
   });
+
+  $('#schema-drift')?.addEventListener('click', async () => {
+    $('#schema-drift').disabled = true;
+    toast('Detecting API schema drifts…');
+    try {
+      const res = await api(`/api/captures/${capture.id}/schema-drift`, { method: 'POST', body: {} });
+      const sd = res.schemaDrift;
+      const driftsHtml = sd.drifts.length ? sd.drifts.map(d => `
+        <div style="margin-top:8px;padding:8px;border-radius:6px;background:#261821;border:1px solid #782c44">
+          <span class="badge err">${escapeHtml(d.kind.toUpperCase())}</span>
+          <p style="margin-top:4px;font-size:12px"><b>Endpoint:</b> <code>${escapeHtml(d.endpoint)}</code></p>
+          <p style="margin-top:2px;font-size:12px"><b>Path:</b> <code>${escapeHtml(d.path)}</code></p>
+          <p style="margin-top:2px;font-size:12px">${escapeHtml(d.detail)}</p>
+        </div>
+      `).join('') : '<p style="color:#86efac;margin-top:8px">✓ No schema drift or contract violations detected in captured API traffic.</p>';
+
+      const modalBody = `
+        <div style="padding:10px;font-size:12px">
+          <p><b>Endpoints Analyzed:</b> ${sd.endpointsAnalyzed} | <b>Contract Violations / Drifts:</b> ${sd.driftCount}</p>
+          <div style="margin-top:10px">${driftsHtml}</div>
+          <div style="margin-top:12px">
+            <details><summary>Inferred Endpoint Schemas</summary><pre class="stack-trace" style="max-height:180px"><code>${escapeHtml(JSON.stringify(sd.inferredSchemas, null, 2))}</code></pre></details>
+          </div>
+        </div>
+      `;
+      showModal(`API Schema Drift: ${escapeHtml(capture.title)}`, modalBody, () => {});
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      $('#schema-drift').disabled = false;
+    }
+  });
+
+  $('#a11y-tree')?.addEventListener('click', async () => {
+    $('#a11y-tree').disabled = true;
+    toast('Auditing Accessibility Tree & Click-Traps…');
+    try {
+      const res = await api(`/api/captures/${capture.id}/a11y-tree`);
+      const { a11y, clickTraps } = res;
+      const trapsHtml = clickTraps.traps.length ? clickTraps.traps.map(t => `
+        <div style="margin-top:8px;padding:8px;border-radius:6px;background:#351a0e;border:1px solid #9a3412">
+          <span class="badge warn">${escapeHtml(t.severity.toUpperCase())}: ${escapeHtml(t.kind)}</span>
+          <p style="margin-top:4px;font-size:12px">${escapeHtml(t.detail)}</p>
+          <code style="font-size:10px;color:#fde047">${escapeHtml(t.element)}</code>
+        </div>
+      `).join('') : '<p style="color:#86efac;margin-top:8px">✓ No invisible click-traps or unnamed controls detected.</p>';
+
+      const modalBody = `
+        <div style="padding:10px;font-size:12px">
+          <div class="row" style="gap:12px;margin-bottom:8px">
+            <span><b>A11y Nodes:</b> ${a11y.nodeCount}</span>
+            <span><b>Token Estimate:</b> ~${a11y.tokenEstimate} tokens</span>
+            <span><b>Click-Traps:</b> ${clickTraps.trapCount}</span>
+          </div>
+          <div style="margin-top:10px">
+            <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase">Click-Trap Audit</label>
+            ${trapsHtml}
+          </div>
+          <div style="margin-top:14px">
+            <div class="row" style="justify-content:space-between;margin-bottom:6px">
+              <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase">Compact Accessibility Tree</label>
+              <button class="button small copy-a11y-tree" type="button">Copy Tree</button>
+            </div>
+            <pre class="stack-trace" style="color:#a7f3d0;border-color:var(--line);max-height:220px"><code>${escapeHtml(a11y.treeText || '(empty)')}</code></pre>
+          </div>
+        </div>
+      `;
+      showModal(`A11y & Click-Trap Audit: ${escapeHtml(capture.title)}`, modalBody, () => {});
+      $('.copy-a11y-tree')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        copy(a11y.treeText);
+      });
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      $('#a11y-tree').disabled = false;
+    }
+  });
+
+  $('#chaos-spec')?.addEventListener('click', () => {
+    location.href = `/api/captures/${capture.id}/chaos`;
+  });
+
+  $('#lineage')?.addEventListener('click', async () => {
+    $('#lineage').disabled = true;
+    toast('Tracing Component & State Lineage…');
+    try {
+      const res = await api(`/api/captures/${capture.id}/lineage`);
+      const lin = res.lineage;
+      const originsHtml = lin.recentNetworkOrigins.length ? `
+        <div style="margin-top:10px">
+          <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase">Downstream Network Calls (${lin.recentNetworkOrigins.length})</label>
+          <table class="headers-table" style="margin-top:4px">
+            <tr><th>Method & URL</th><th>Status</th><th>Timing</th></tr>
+            ${lin.recentNetworkOrigins.map(n => `
+              <tr>
+                <td><code>${escapeHtml(n.method)} ${escapeHtml(n.url)}</code></td>
+                <td style="color:${n.status >= 400 ? 'var(--red)' : '#86efac'}">${n.status || 'pending'}</td>
+                <td>+${n.deltaMs}ms</td>
+              </tr>
+            `).join('')}
+          </table>
+        </div>
+      ` : '<p class="muted" style="margin-top:6px">No downstream network calls triggered within 1500ms of action.</p>';
+
+      const stateHtml = lin.stateChanges.length ? `
+        <div style="margin-top:10px">
+          <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase">State Mutations (${lin.stateChanges.length})</label>
+          <pre class="stack-trace" style="max-height:120px;color:#cbd5e1"><code>${escapeHtml(JSON.stringify(lin.stateChanges, null, 2))}</code></pre>
+        </div>
+      ` : '';
+
+      const modalBody = `
+        <div style="padding:10px;font-size:12px">
+          <div class="repro-summary-card" style="margin-bottom:12px">
+            <span class="repro-verdict ${lin.hasException ? 'fail' : 'pass'}">${lin.hasException ? 'EXCEPTION DETECTED' : 'CLEAN FLOW'}</span>
+            <p style="font-size:13px;margin:6px 0;font-weight:600">${escapeHtml(lin.diagnosisVerdict)}</p>
+          </div>
+          <div class="kv-grid" style="grid-template-columns:1fr 1fr;gap:8px">
+            <div class="kv"><span>Trigger Action</span><b>${escapeHtml(lin.trigger?.kind || 'None')}</b></div>
+            <div class="kv"><span>Inferred Component</span><code>${escapeHtml(lin.trigger?.inferredComponent || 'Unknown')}</code></div>
+            <div class="kv"><span>Selector</span><code>${escapeHtml(lin.trigger?.selector || 'N/A')}</code></div>
+            <div class="kv"><span>Target Text</span><span>${escapeHtml(lin.trigger?.label || 'N/A')}</span></div>
+          </div>
+          ${stateHtml}
+          ${originsHtml}
+        </div>
+      `;
+      showModal(`Component Blast-Radius Lineage: ${escapeHtml(capture.title)}`, modalBody, () => {});
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      $('#lineage').disabled = false;
+    }
+  });
+
+  $('#auto-fix')?.addEventListener('click', async () => {
+    $('#auto-fix').disabled = true;
+    toast('Routing task capsule to AI-Control Plane…');
+    try {
+      const res = await api(`/api/captures/${capture.id}/auto-fix`, { method: 'POST', body: {} });
+      const af = res.autoFix;
+      const modalBody = `
+        <div style="padding:10px;font-size:12px">
+          <p><b>Status:</b> <span class="badge ${af.connectedToControlPlane ? 'pass' : 'warn'}">${escapeHtml(af.status)}</span></p>
+          <p style="margin-top:8px"><b>Branch:</b> <code>${escapeHtml(af.branch)}</code></p>
+          <p style="margin-top:8px"><b>Severity:</b> ${escapeHtml(af.capsule?.severity || 'medium')}</p>
+          <p style="margin-top:8px"><b>Recommended Fix:</b> ${escapeHtml(af.capsule?.recommendedFix || 'Inspect reproduction')}</p>
+          <p style="margin-top:8px"><b>Verification Command:</b><br/><code>${escapeHtml(af.instructions)}</code></p>
+          <div style="margin-top:12px">
+            <details open><summary>Task Capsule Spec (AI-Control Format)</summary><pre class="stack-trace" style="max-height:160px"><code>${escapeHtml(JSON.stringify(af.capsule, null, 2))}</code></pre></details>
+          </div>
+        </div>
+      `;
+      showModal(`AI-Control Auto-Fix: ${escapeHtml(capture.title)}`, modalBody, () => {});
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      $('#auto-fix').disabled = false;
+    }
+  });
+
+  $('#export-mocks')?.addEventListener('click', () => {
+    location.href = `/api/captures/${capture.id}/mocks?format=msw`;
+  });
+
+  $('#security-probe')?.addEventListener('click', async () => {
+    $('#security-probe').disabled = true;
+    toast('Running security fuzzer & probes…');
+    try {
+      const res = await api(`/api/captures/${capture.id}/security-probe`, { method: 'POST', body: {} });
+      const sp = res.securityProbe;
+      const findingsHtml = sp.findings.length ? sp.findings.map(f => `
+        <div style="margin-top:8px;padding:8px;border-radius:6px;background:#261821;border:1px solid #782c44">
+          <span class="badge err">${escapeHtml(f.severity.toUpperCase())}: ${escapeHtml(f.kind)}</span>
+          <p style="margin-top:4px;font-size:12px">${escapeHtml(f.description)}</p>
+          <code style="font-size:10px;color:#fca5a5">${escapeHtml(f.evidence)}</code>
+        </div>
+      `).join('') : '<p style="color:#86efac;margin-top:8px">✓ No high-risk reflections, open redirects, or CORS misconfigurations detected.</p>';
+
+      const modalBody = `
+        <div style="padding:10px;font-size:12px">
+          <p><b>Target:</b> <code>${escapeHtml(sp.targetUrl)}</code></p>
+          <p><b>Probes Executed:</b> ${sp.probesExecuted} | <b>Findings:</b> ${sp.findingsCount}</p>
+          <div style="margin-top:10px">${findingsHtml}</div>
+        </div>
+      `;
+      showModal(`Security Probe: ${escapeHtml(capture.title)}`, modalBody, () => {});
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      $('#security-probe').disabled = false;
+    }
+  });
+
   $('#create-issue')?.addEventListener('click', () => issueModal(capture));
-  $('#delete-capture')?.addEventListener('click', async () => {
+  const deleteBtn = $('#delete') || $('#delete-capture');
+  deleteBtn?.addEventListener('click', async () => {
     if (!confirm(`Delete capture "${capture.title}"? This cannot be undone.`)) return;
     try {
       await api(`/api/captures/${capture.id}`, { method: 'DELETE' });
@@ -762,6 +978,60 @@ $('#search').addEventListener('input', (e) => {
       failedRequestCount: c.failedRequestCount ?? (c.events?.filter((e) => e.type === 'network' && (Number(e.data?.status || 0) >= 400 || e.data?.failed)).length || 0)
     })));
   }, 200);
+});
+
+async function loadAudits() {
+  try {
+    const data = await api('/api/audit');
+    const countEl = $('#audit-count');
+    if (countEl) countEl.textContent = data.audits.length;
+    renderAuditsList(data.audits);
+  } catch {}
+}
+
+function renderAuditsList(audits) {
+  const box = $('#audits-list');
+  if (!box) return;
+  if (!audits.length) {
+    box.innerHTML = `<div class="empty-state" style="grid-column:1/-1;padding:40px"><div class="empty-icon">🔍</div><h2>No audits recorded yet</h2><p>Click "+ New audit" to crawl a target URL and discover broken routes and UI issues.</p></div>`;
+    return;
+  }
+  box.innerHTML = audits.map((a) => `
+    <article class="panel-card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h3>${escapeHtml(a.url)}</h3>
+        <span class="badge ${a.status === 'completed' ? 'pass' : a.status === 'failed' ? 'err' : 'warn'}">${escapeHtml(a.status)}</span>
+      </div>
+      <p class="muted" style="font-size:12px;margin:6px 0">${ago(new Date(a.startedAt).toISOString())} · Policy: ${escapeHtml(a.policy)}</p>
+      <div class="badges" style="margin-top:8px">
+        <span class="badge">${a.routesCrawled?.length || 0} routes</span>
+        <span class="badge">${a.controlsDiscovered || 0} controls</span>
+        ${a.errorsFound?.length ? `<span class="badge err">${a.errorsFound.length} errors</span>` : '<span class="badge pass">0 errors</span>'}
+        ${a.capturesCreated?.length ? `<span class="badge" style="background:#4338ca">${a.capturesCreated.length} bug captures created</span>` : ''}
+      </div>
+    </article>
+  `).join('');
+}
+
+$('#new-audit')?.addEventListener('click', () => {
+  showModal('Start Autonomous UI Audit', `
+    <div class="field"><label>Target URL</label><input class="input" id="audit-target-url" placeholder="http://localhost:3000" required /></div>
+    <div class="field"><label>Max Routes to Crawl</label><input class="input" id="audit-max-routes" type="number" value="15" /></div>
+  `, async () => {
+    const url = $('#audit-target-url')?.value;
+    const maxRoutes = parseInt($('#audit-max-routes')?.value || '15', 10);
+    if (!url) return;
+    toast('Starting UI audit crawl…');
+    try {
+      await api('/api/audit/start', { method: 'POST', body: { url, maxRoutes } });
+      toast('Audit started successfully');
+      await loadAudits();
+      await loadCaptures();
+    } catch (e) {
+      toast(e.message);
+    }
+    return true;
+  });
 });
 
 bootstrap().catch((e) => { console.error(e); toast(e.message); });

@@ -12,6 +12,7 @@
       <div class="brand"><div class="brandmark">T</div><div><strong>TraceDeck</strong><span>Open-source debugging</span></div></div>
       <nav>
         <button class="nav active" data-view="captures"><span>◫</span> Captures <b id="capture-count">0</b></button>
+        <button class="nav" data-view="audits"><span>🔍</span> UI Audits <b id="audit-count">0</b></button>
         <button class="nav" data-view="links"><span>↗</span> Recording links</button>
         <button class="nav" data-view="webhooks"><span>⌁</span> Webhooks</button>
         <button class="nav" data-view="settings"><span>⚙</span> Project settings</button>
@@ -39,6 +40,11 @@
           </aside>
           <main id="detail" class="detail"><div class="empty-state"><div class="empty-icon">◎</div><h2>Select a capture</h2><p>Choose a report on the left, record one with the browser extension, or create a recording link for someone else.</p></div></main>
         </div>
+      </div>
+
+      <div id="audits-view" class="view page-view">
+        <div class="page-head"><div><span class="eyebrow">AUTONOMOUS AUDIT STUDIO</span><h1>UI Audits & Exploration</h1><p>Crawl web applications, inventory interactive controls, and auto-generate bug captures with visual diffing.</p></div><button class="button primary" id="new-audit">+ New audit</button></div>
+        <div id="audits-list" class="cards-grid"></div>
       </div>
 
       <div id="links-view" class="view page-view">

@@ -69,5 +69,7 @@
 /* External Issue Badges */
 .issue-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600;background:#0c1d2e;border:1px solid #1e3a5f;color:#60a5fa;text-decoration:none}
 .issue-badge:hover{background:#172e48;border-color:#3b82f6;color:#93c5fd}
+.badge.pass{border-color:#166534;background:#052e16;color:#86efac}
+.badge.warn{border-color:#854d0e;background:#422006;color:#fde047}
 
 

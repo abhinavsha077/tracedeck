@@ -13,11 +13,22 @@ import { validateCaptureBundle } from '../../packages/capture-schema/validate.mj
 import { triageCapture, captureToHar } from './lib/triage.mjs';
 import { runReproduction } from './lib/reproduction.mjs';
 import { contentTypeFor, hmac, json, readBody, readJson, text } from './lib/utils.mjs';
+import { AuditEngine } from './lib/audit.mjs';
+import { diffPngBuffers } from './lib/diff.mjs';
+import { generateMswHandlers, generateFetchMock } from './lib/mock-generator.mjs';
+import { SourceMapConsumer, symbolicateStackTrace } from './lib/sourcemap.mjs';
+import { dispatchAutoFix } from './lib/ai-control.mjs';
+import { runSecurityProbes } from './lib/security-probe.mjs';
+import { detectCaptureSchemaDrift } from './lib/schema-drift.mjs';
+import { buildA11yTree, auditClickTraps } from './lib/a11y-tree.mjs';
+import { generateChaosSpec } from './lib/chaos-replay.mjs';
+import { traceComponentLineage } from './lib/lineage.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(__dirname, '../web');
 const sdkFile = path.resolve(__dirname, '../../packages/browser-sdk/tracedeck.js');
 const store = await new Store(config.dataDir).init();
+const auditEngine = new AuditEngine(store);
 
 function cors(req, res) {
   res.setHeader('access-control-allow-origin', req.headers.origin || '*');
@@ -347,6 +358,92 @@ async function handleApi(req, res, url) {
     }
   }
 
+  m = routeMatch(pathname, '/api/captures/:id/mocks');
+  if (m && req.method === 'GET') {
+    const capture = store.getCapture(m.id);
+    if (!capture) return json(res, 404, { error: 'Capture not found' });
+    const format = url.searchParams.get('format') || 'msw';
+    if (format === 'fetch') {
+      return text(res, 200, generateFetchMock(capture), 'application/javascript; charset=utf-8', { 'content-disposition': `attachment; filename="${m.id}.mock-fetch.js"` });
+    }
+    return text(res, 200, generateMswHandlers(capture), 'application/javascript; charset=utf-8', { 'content-disposition': `attachment; filename="${m.id}.handlers.js"` });
+  }
+
+  m = routeMatch(pathname, '/api/captures/:id/auto-fix');
+  if (m && req.method === 'POST') {
+    const capture = store.getCapture(m.id);
+    if (!capture) return json(res, 404, { error: 'Capture not found' });
+    const body = await readJson(req).catch(() => ({}));
+    const autoFix = await dispatchAutoFix(capture, body);
+    return json(res, 200, { autoFix });
+  }
+
+  m = routeMatch(pathname, '/api/captures/:id/security-probe');
+  if (m && req.method === 'POST') {
+    const capture = store.getCapture(m.id);
+    if (!capture) return json(res, 404, { error: 'Capture not found' });
+    if (!capture.url || !/^https?:\/\//i.test(capture.url)) {
+      return json(res, 400, { error: 'Capture target URL is not a valid HTTP/HTTPS endpoint to probe' });
+    }
+    const body = await readJson(req).catch(() => ({}));
+    const report = await runSecurityProbes(capture.url, body);
+    return json(res, 200, { securityProbe: report });
+  }
+
+  m = routeMatch(pathname, '/api/captures/:id/symbolicate');
+  if (m && req.method === 'POST') {
+    const capture = store.getCapture(m.id);
+    if (!capture) return json(res, 404, { error: 'Capture not found' });
+    const body = await readJson(req).catch(() => ({}));
+    if (!body || !body.stack || !body.sourceMap) {
+      return json(res, 400, { error: 'stack and sourceMap fields are required' });
+    }
+    try {
+      const consumer = new SourceMapConsumer(body.sourceMap);
+      const symbolicated = symbolicateStackTrace(body.stack, consumer);
+      return json(res, 200, { symbolicatedStack: symbolicated });
+    } catch (err) {
+      return json(res, 400, { error: 'Failed to symbolicate: ' + err.message });
+    }
+  }
+
+  m = routeMatch(pathname, '/api/captures/:id/schema-drift');
+  if (m && req.method === 'POST') {
+    const capture = store.getCapture(m.id);
+    if (!capture) return json(res, 404, { error: 'Capture not found' });
+    const body = await readJson(req).catch(() => ({}));
+    const report = detectCaptureSchemaDrift(capture, body.contracts || {});
+    return json(res, 200, { schemaDrift: report });
+  }
+
+  m = routeMatch(pathname, '/api/captures/:id/a11y-tree');
+  if (m && (req.method === 'POST' || req.method === 'GET')) {
+    const capture = store.getCapture(m.id);
+    if (!capture) return json(res, 404, { error: 'Capture not found' });
+    const domSnapshot = (capture.events || []).find(e => e.type === 'dom' && (e.html || e.data?.html)) || null;
+    const body = req.method === 'POST' ? await readJson(req).catch(() => ({})) : {};
+    const htmlToAnalyze = body.html || domSnapshot?.html || domSnapshot?.data?.html || '<body><main><h1>Page</h1></main></body>';
+    const a11y = buildA11yTree(htmlToAnalyze);
+    const traps = auditClickTraps(htmlToAnalyze);
+    return json(res, 200, { a11y, clickTraps: traps });
+  }
+
+  m = routeMatch(pathname, '/api/captures/:id/chaos');
+  if (m && req.method === 'GET') {
+    const capture = store.getCapture(m.id);
+    if (!capture) return json(res, 404, { error: 'Capture not found' });
+    const spec = generateChaosSpec(capture);
+    return text(res, 200, spec, 'text/plain; charset=utf-8', { 'content-disposition': `attachment; filename="${m.id}.chaos.spec.ts"` });
+  }
+
+  m = routeMatch(pathname, '/api/captures/:id/lineage');
+  if (m && req.method === 'GET') {
+    const capture = store.getCapture(m.id);
+    if (!capture) return json(res, 404, { error: 'Capture not found' });
+    const lineage = traceComponentLineage(capture);
+    return json(res, 200, { lineage });
+  }
+
   m = routeMatch(pathname, '/api/share/:token');
   if (m && req.method === 'GET') {
     const capture = store.captureForShare(m.token);
@@ -407,6 +504,49 @@ async function handleApi(req, res, url) {
     const q = (url.searchParams.get('q') || '').toLowerCase().trim();
     const captures = q ? store.listCaptures().filter((c) => JSON.stringify([c.title, c.description, c.url, c.metadata, c.environment]).toLowerCase().includes(q)).slice(0, 50) : [];
     return json(res, 200, { captures });
+  }
+
+  if (req.method === 'POST' && pathname === '/api/audit/start') {
+    const body = await readJson(req);
+    if (!body.url) return json(res, 400, { error: 'Target URL is required' });
+    try {
+      const audit = await auditEngine.startAudit(body);
+      return json(res, 201, { audit });
+    } catch (err) {
+      return json(res, 400, { error: err.message });
+    }
+  }
+
+  if (req.method === 'GET' && pathname === '/api/audit') {
+    return json(res, 200, { audits: auditEngine.listAudits() });
+  }
+
+  m = routeMatch(pathname, '/api/audit/:id');
+  if (m && req.method === 'GET') {
+    const audit = auditEngine.getAudit(m.id);
+    return audit ? json(res, 200, { audit }) : json(res, 404, { error: 'Audit run not found' });
+  }
+
+  if (req.method === 'POST' && pathname === '/api/audit/diff') {
+    const body = await readJson(req);
+    if (!body.image1 || !body.image2) {
+      return json(res, 400, { error: 'image1 and image2 (base64 PNG strings) are required' });
+    }
+    try {
+      const buf1 = Buffer.from(body.image1.replace(/^data:image\/png;base64,/, ''), 'base64');
+      const buf2 = Buffer.from(body.image2.replace(/^data:image\/png;base64,/, ''), 'base64');
+      const diffResult = diffPngBuffers(buf1, buf2, { tolerance: body.tolerance || 16 });
+      return json(res, 200, {
+        match: diffResult.match,
+        mismatchCount: diffResult.mismatchCount,
+        totalPixels: diffResult.totalPixels,
+        mismatchPct: diffResult.mismatchPct,
+        boundingBox: diffResult.boundingBox,
+        diffImageBase64: 'data:image/png;base64,' + diffResult.diffPng.toString('base64')
+      });
+    } catch (err) {
+      return json(res, 400, { error: 'Failed to compute diff: ' + err.message });
+    }
   }
 
   return json(res, 404, { error: 'API route not found' });

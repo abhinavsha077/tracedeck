@@ -75,4 +75,90 @@ test('MCP endpoints triage and har are served by API', async () => {
   assert.equal(cfgRes.status, 200);
   const cfgData = await cfgRes.json();
   assert('telemetry' in cfgData);
+
+  // 6. Test mocks and auto-fix endpoints for MCP integration
+  const mockRes = await fetch(`${base}/api/captures/${cap.id}/mocks?format=msw`, {
+    headers: { 'x-tracedeck-key': 'td_local_dev' }
+  });
+  assert.equal(mockRes.status, 200);
+  const mockCode = await mockRes.text();
+  assert.ok(mockCode.includes('import { http, HttpResponse } from \'msw\''));
+
+  const autoFixRes = await fetch(`${base}/api/captures/${cap.id}/auto-fix`, {
+    method: 'POST',
+    headers: { 'x-tracedeck-key': 'td_local_dev', 'content-type': 'application/json' },
+    body: JSON.stringify({})
+  });
+  assert.equal(autoFixRes.status, 200);
+  const autoFixData = await autoFixRes.json();
+  assert.equal(autoFixData.autoFix.capsule.taskId, `fix_${cap.id}`);
+
+  // 7. Test Deep Superpowers API endpoints
+  const driftRes = await fetch(`${base}/api/captures/${cap.id}/schema-drift`, {
+    method: 'POST',
+    headers: { 'x-tracedeck-key': 'td_local_dev', 'content-type': 'application/json' },
+    body: JSON.stringify({})
+  });
+  assert.equal(driftRes.status, 200);
+  const driftData = await driftRes.json();
+  assert.ok(driftData.schemaDrift);
+
+  const a11yRes = await fetch(`${base}/api/captures/${cap.id}/a11y-tree`, {
+    method: 'POST',
+    headers: { 'x-tracedeck-key': 'td_local_dev', 'content-type': 'application/json' },
+    body: JSON.stringify({ html: '<main><button>Test Control</button></main>' })
+  });
+  assert.equal(a11yRes.status, 200);
+  const a11yData = await a11yRes.json();
+  assert.ok(a11yData.a11y.treeText.includes('button "Test Control"'));
+
+  const chaosRes = await fetch(`${base}/api/captures/${cap.id}/chaos`, {
+    headers: { 'x-tracedeck-key': 'td_local_dev' }
+  });
+  assert.equal(chaosRes.status, 200);
+  const chaosText = await chaosRes.text();
+  assert.ok(chaosText.includes('@playwright/test'));
+
+  const linRes = await fetch(`${base}/api/captures/${cap.id}/lineage`, {
+    headers: { 'x-tracedeck-key': 'td_local_dev' }
+  });
+  assert.equal(linRes.status, 200);
+  const linData = await linRes.json();
+  assert.ok(linData.lineage.diagnosisVerdict);
 });
+
+test('TraceDeck CLI supports drift, a11y, chaos, and lineage commands', async () => {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const exec = promisify(execFile);
+
+  const project = store.listProjects()[0];
+  const cap = await store.createCapture({
+    title: 'CLI deep superpowers test',
+    events: [
+      { type: 'action', ts: 100, data: { action: 'click', selector: '#checkout-button', label: 'Checkout' } },
+      { type: 'network', ts: 200, data: { method: 'POST', url: 'https://api.shop.com/checkout', status: 500, responseBody: '{"error":"out_of_stock"}' } }
+    ]
+  }, project.id);
+
+  // 1. CLI drift
+  const { stdout: driftOut } = await exec(process.execPath, ['tools/cli/tracedeck.mjs', 'drift', cap.id, '--server', base]);
+  const driftJson = JSON.parse(driftOut);
+  assert.ok(driftJson.schemaDrift);
+
+  // 2. CLI a11y
+  const { stdout: a11yOut } = await exec(process.execPath, ['tools/cli/tracedeck.mjs', 'a11y', cap.id, '--server', base]);
+  const a11yJson = JSON.parse(a11yOut);
+  assert.ok(a11yJson.a11y);
+
+  // 3. CLI chaos
+  const { stdout: chaosOut } = await exec(process.execPath, ['tools/cli/tracedeck.mjs', 'chaos', cap.id, '--server', base]);
+  assert.ok(chaosOut.includes('@playwright/test'));
+
+  // 4. CLI lineage
+  const { stdout: lineageOut } = await exec(process.execPath, ['tools/cli/tracedeck.mjs', 'lineage', cap.id, '--server', base]);
+  const lineageJson = JSON.parse(lineageOut);
+  assert.ok(lineageJson.lineage);
+});
+
+
